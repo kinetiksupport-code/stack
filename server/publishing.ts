@@ -20,6 +20,22 @@ function normalizeRepoName(value: string) {
   return value.trim().toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 90) || `stack-project-${Date.now()}`;
 }
 
+export function normalizeProjectName(value: string) {
+  return normalizeRepoName(value);
+}
+
+export async function checkVercelProjectName(encryptedToken: string, requestedName: string) {
+  const token = decryptSecret(encryptedToken);
+  const name = normalizeRepoName(requestedName);
+  try {
+    await providerRequest(`${VERCEL_API}/v9/projects/${encodeURIComponent(name)}`, token);
+    return { name, available: false, source: "vercel" as const };
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("404")) return { name, available: true, source: "vercel" as const };
+    throw error;
+  }
+}
+
 export async function syncProjectToGitHub(input: { encryptedToken: string; requestedName: string; description: string; code: string; privateRepo: boolean }): Promise<GitHubRepository> {
   const token = decryptSecret(input.encryptedToken);
   const profile = await providerRequest<{ login: string }>(`${GITHUB_API}/user`, token);

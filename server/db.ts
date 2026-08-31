@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   InsertProject,
@@ -80,6 +80,14 @@ export async function listProjects(userId: number): Promise<Project[]> {
     .from(projects)
     .where(eq(projects.userId, userId))
     .orderBy(desc(projects.updatedAt));
+}
+
+export async function isProjectNameTaken(name: string, excludeId?: number) {
+  const db = await getDb();
+  if (!db) return false;
+  const condition = excludeId ? and(eq(projects.name, name), sql`${projects.id} <> ${excludeId}`) : eq(projects.name, name);
+  const result = await db.select({ id: projects.id }).from(projects).where(condition).limit(1);
+  return result.length > 0;
 }
 
 export async function getProject(userId: number, id: number): Promise<Project | undefined> {

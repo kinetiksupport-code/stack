@@ -13,12 +13,13 @@ import {
   createDeployment,
   listDeployments,
   listApiKeys,
+  isProjectNameTaken,
   listProjects,
   updateProject,
 } from "./db";
 import { encryptSecret, secretHint } from "./secretBox";
 import { generateCode, type BuildKind } from "./stack";
-import { deployProjectToVercel, syncProjectToGitHub } from "./publishing";
+import { checkVercelProjectName, deployProjectToVercel, normalizeProjectName, syncProjectToGitHub } from "./publishing";
 
 const buildKind = z.enum(["game", "app", "website"]);
 const promptInput = z.object({
@@ -90,6 +91,19 @@ export const appRouter = router({
   }),
 
   publishing: router({
+    checkName: protectedProcedure.input(z.object({ name: z.string().trim().min(1).max(90), projectId: z.number().int().positive().optional() })).query(async ({ ctx, input }) => {
+      const name = normalizeProjectName(input.name);
+      const stackTaken = await isProjectNameTaken(name, input.projectId);
+      if (stackTaken) return { name, available: false, source: "stack" as const, detail: "This name is already used in Stack" };
+      const vercelToken = await getApiKeySecret(ctx.user.id, "Vercel");
+      if (!vercelToken) return { name, available: true, source: "stack" as const, detail: "Available in Stack; connect Vercel to confirm globally" };
+      try {
+        const result = await checkVercelProjectName(vercelToken, name);
+        return { ...result, detail: result.available ? "Available on Stack and Vercel" : "This name is already used on Vercel" };
+      } catch {
+        return { name, available: true, source: "stack" as const, detail: "Available in Stack; Vercel could not be checked" };
+      }
+    }),
     history: protectedProcedure.input(z.object({ projectId: z.number().int().positive().optional() }).optional()).query(({ ctx, input }) => listDeployments(ctx.user.id, input?.projectId)),
     github: protectedProcedure.input(z.object({ projectId: z.number().int().positive(), repositoryName: z.string().trim().min(1).max(90), privateRepo: z.boolean() })).mutation(async ({ ctx, input }) => {
       const project = await getProject(ctx.user.id, input.projectId);
@@ -110,6 +124,8 @@ export const appRouter = router({
       const encryptedToken = await getApiKeySecret(ctx.user.id, "Vercel");
       if (!encryptedToken) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Connect a Vercel token in Settings first" });
       try {
+        const availability = await checkVercelProjectName(encryptedToken, input.projectName);
+        if (!availability.available) throw new TRPCError({ code: "CONFLICT", message: `The Vercel name "${availability.name}" is already taken. Choose another name.` });
         const deployment = await deployProjectToVercel({ encryptedToken, projectName: input.projectName, code: project.code, production: true });
         await createDeployment({ userId: ctx.user.id, projectId: project.id, provider: "vercel", status: "ready", repository: null, repositoryUrl: null, deploymentUrl: deployment.url, providerId: deployment.id, errorMessage: null });
         return deployment;
