@@ -8,6 +8,7 @@ import {
   Deployment,
   Project,
   projects,
+  usageEvents,
   users,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
@@ -166,4 +167,32 @@ export async function createDeployment(input: Omit<Deployment, "id" | "createdAt
   if (!id) return undefined;
   const rows = await db.select().from(deployments).where(and(eq(deployments.userId, input.userId), eq(deployments.id, id))).limit(1);
   return rows[0];
+}
+
+export async function countUsageEvents(userId: number, action: string, since: Date) {
+  const db = await getDb();
+  if (!db) return 0;
+  const rows = await db.select({ count: sql<number>`count(*)` }).from(usageEvents).where(and(eq(usageEvents.userId, userId), eq(usageEvents.action, action), sql`${usageEvents.createdAt} >= ${since}`));
+  return Number(rows[0]?.count ?? 0);
+}
+
+export async function recordUsageEvent(userId: number, action: string) {
+  const db = await getDb();
+  if (!db) return false;
+  await db.insert(usageEvents).values({ userId, action });
+  return true;
+}
+
+export async function countActiveVercelProjects(userId: number) {
+  const db = await getDb();
+  if (!db) return 0;
+  const rows = await db.select({ projectId: deployments.projectId }).from(deployments).where(and(eq(deployments.userId, userId), eq(deployments.provider, "vercel"), eq(deployments.status, "ready")));
+  return new Set(rows.map(row => row.projectId)).size;
+}
+
+export async function hasActiveVercelProject(userId: number, projectId: number) {
+  const db = await getDb();
+  if (!db) return false;
+  const rows = await db.select({ id: deployments.id }).from(deployments).where(and(eq(deployments.userId, userId), eq(deployments.projectId, projectId), eq(deployments.provider, "vercel"), eq(deployments.status, "ready"))).limit(1);
+  return rows.length > 0;
 }

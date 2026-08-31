@@ -12,4 +12,6 @@ export const ENV = {
   openRouterModel: process.env.OPENROUTER_MODEL ?? "z-ai/glm-5.2:free",
   supabaseUrl: process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL ?? "",
   supabaseAnonKey: process.env.SUPABASE_ANON_KEY ?? process.env.VITE_SUPABASE_ANON_KEY ?? "",
+  vercelToken: process.env.VERCEL_TOKEN ?? "",
+  vercelTeamId: process.env.VERCEL_TEAM_ID ?? "",
 };

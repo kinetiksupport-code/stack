@@ -57,6 +57,13 @@ export const deployments = mysqlTable("deployments", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
+export const usageEvents = mysqlTable("usageEvents", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  action: varchar("action", { length: 60 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 export type Project = typeof projects.$inferSelect;
@@ -65,6 +72,7 @@ export type ApiKey = typeof apiKeys.$inferSelect;
 export type InsertApiKey = typeof apiKeys.$inferInsert;
 export type Deployment = typeof deployments.$inferSelect;
 export type InsertDeployment = typeof deployments.$inferInsert;
+export type UsageEvent = typeof usageEvents.$inferSelect;
 
 export const WORLD_MODEL_VERSION = "world-model-v0.1";
 export const DEFAULT_GENERATION_MODEL = "z-ai/glm-5.2:free";

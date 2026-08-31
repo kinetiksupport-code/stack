@@ -36,6 +36,19 @@ export async function checkVercelProjectName(encryptedToken: string, requestedNa
   }
 }
 
+export async function checkVercelProjectNameWithToken(input: { encryptedToken?: string; token?: string; requestedName: string }) {
+  const token = input.token || (input.encryptedToken ? decryptSecret(input.encryptedToken) : "");
+  if (!token) throw new Error("Vercel token is not configured");
+  const name = normalizeRepoName(input.requestedName);
+  try {
+    await providerRequest(`${VERCEL_API}/v9/projects/${encodeURIComponent(name)}`, token);
+    return { name, available: false, source: "vercel" as const };
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("404")) return { name, available: true, source: "vercel" as const };
+    throw error;
+  }
+}
+
 export async function syncProjectToGitHub(input: { encryptedToken: string; requestedName: string; description: string; code: string; privateRepo: boolean }): Promise<GitHubRepository> {
   const token = decryptSecret(input.encryptedToken);
   const profile = await providerRequest<{ login: string }>(`${GITHUB_API}/user`, token);
@@ -52,8 +65,9 @@ export async function syncProjectToGitHub(input: { encryptedToken: string; reque
   return { owner: profile.login, name: repository.name, htmlUrl: repository.html_url, defaultBranch: repository.default_branch || "main" };
 }
 
-export async function deployProjectToVercel(input: { encryptedToken: string; projectName: string; code: string; production: boolean }): Promise<VercelDeployment> {
-  const token = decryptSecret(input.encryptedToken);
+export async function deployProjectToVercel(input: { encryptedToken?: string; token?: string; projectName: string; code: string; production: boolean }): Promise<VercelDeployment> {
+  const token = input.token || (input.encryptedToken ? decryptSecret(input.encryptedToken) : "");
+  if (!token) throw new Error("Vercel token is not configured");
   const name = normalizeRepoName(input.projectName);
   let project: { id?: string; name: string };
   try {

@@ -15,11 +15,18 @@ import {
   listApiKeys,
   isProjectNameTaken,
   listProjects,
+  countActiveVercelProjects,
+  countUsageEvents,
+  hasActiveVercelProject,
+  recordUsageEvent,
   updateProject,
 } from "./db";
 import { encryptSecret, secretHint } from "./secretBox";
 import { generateCode, type BuildKind } from "./stack";
-import { checkVercelProjectName, deployProjectToVercel, normalizeProjectName, syncProjectToGitHub } from "./publishing";
+import { checkVercelProjectNameWithToken, deployProjectToVercel, normalizeProjectName, syncProjectToGitHub } from "./publishing";
+import { ENV } from "./_core/env";
+
+const FREE_LIMITS = { activeProjects: 3, deploymentsPerDay: 10, nameChecksPerHour: 30 } as const;
 
 const buildKind = z.enum(["game", "app", "website"]);
 const promptInput = z.object({
@@ -91,14 +98,25 @@ export const appRouter = router({
   }),
 
   publishing: router({
+    status: protectedProcedure.query(async ({ ctx }) => ({
+      limits: FREE_LIMITS,
+      activeProjects: await countActiveVercelProjects(ctx.user.id),
+      deploymentsToday: await countUsageEvents(ctx.user.id, "vercel_deploy", new Date(Date.now() - 24 * 60 * 60 * 1000)),
+      nameChecksThisHour: await countUsageEvents(ctx.user.id, "name_check", new Date(Date.now() - 60 * 60 * 1000)),
+      vercelConnected: Boolean(ENV.vercelToken || await getApiKeySecret(ctx.user.id, "Vercel")),
+    })),
     checkName: protectedProcedure.input(z.object({ name: z.string().trim().min(1).max(90), projectId: z.number().int().positive().optional() })).query(async ({ ctx, input }) => {
+      const checks = await countUsageEvents(ctx.user.id, "name_check", new Date(Date.now() - 60 * 60 * 1000));
+      if (checks >= FREE_LIMITS.nameChecksPerHour) throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "Name checks are limited to 30 per hour. Try again later." });
+      await recordUsageEvent(ctx.user.id, "name_check");
       const name = normalizeProjectName(input.name);
       const stackTaken = await isProjectNameTaken(name, input.projectId);
       if (stackTaken) return { name, available: false, source: "stack" as const, detail: "This name is already used in Stack" };
-      const vercelToken = await getApiKeySecret(ctx.user.id, "Vercel");
-      if (!vercelToken) return { name, available: true, source: "stack" as const, detail: "Available in Stack; connect Vercel to confirm globally" };
+      const encryptedVercelToken = await getApiKeySecret(ctx.user.id, "Vercel");
+      const vercelToken = encryptedVercelToken ? undefined : ENV.vercelToken;
+      if (!encryptedVercelToken && !vercelToken) return { name, available: true, source: "stack" as const, detail: "Available in Stack; Vercel is not connected" };
       try {
-        const result = await checkVercelProjectName(vercelToken, name);
+        const result = await checkVercelProjectNameWithToken({ encryptedToken: encryptedVercelToken, token: vercelToken, requestedName: name });
         return { ...result, detail: result.available ? "Available on Stack and Vercel" : "This name is already used on Vercel" };
       } catch {
         return { name, available: true, source: "stack" as const, detail: "Available in Stack; Vercel could not be checked" };
@@ -122,11 +140,18 @@ export const appRouter = router({
       const project = await getProject(ctx.user.id, input.projectId);
       if (!project) throw new TRPCError({ code: "NOT_FOUND", message: "Project not found" });
       const encryptedToken = await getApiKeySecret(ctx.user.id, "Vercel");
-      if (!encryptedToken) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Connect a Vercel token in Settings first" });
+      const centralToken = ENV.vercelToken;
+      if (!encryptedToken && !centralToken) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Vercel publishing is not configured yet" });
+      const hasActiveProject = await hasActiveVercelProject(ctx.user.id, project.id);
+      const activeProjects = await countActiveVercelProjects(ctx.user.id);
+      if (!hasActiveProject && activeProjects >= FREE_LIMITS.activeProjects) throw new TRPCError({ code: "FORBIDDEN", message: "You have reached the free limit of 3 active Vercel projects." });
+      const deploymentsToday = await countUsageEvents(ctx.user.id, "vercel_deploy", new Date(Date.now() - 24 * 60 * 60 * 1000));
+      if (deploymentsToday >= FREE_LIMITS.deploymentsPerDay) throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "You have reached the free limit of 10 Vercel deployments per day." });
+      await recordUsageEvent(ctx.user.id, "vercel_deploy");
       try {
-        const availability = await checkVercelProjectName(encryptedToken, input.projectName);
+        const availability = await checkVercelProjectNameWithToken({ encryptedToken: encryptedToken || undefined, token: centralToken || undefined, requestedName: input.projectName });
         if (!availability.available) throw new TRPCError({ code: "CONFLICT", message: `The Vercel name "${availability.name}" is already taken. Choose another name.` });
-        const deployment = await deployProjectToVercel({ encryptedToken, projectName: input.projectName, code: project.code, production: true });
+        const deployment = await deployProjectToVercel({ encryptedToken: encryptedToken || undefined, token: centralToken || undefined, projectName: input.projectName, code: project.code, production: true });
         await createDeployment({ userId: ctx.user.id, projectId: project.id, provider: "vercel", status: "ready", repository: null, repositoryUrl: null, deploymentUrl: deployment.url, providerId: deployment.id, errorMessage: null });
         return deployment;
       } catch (error) {
