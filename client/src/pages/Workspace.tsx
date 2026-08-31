@@ -1,11 +1,10 @@
 import { useMemo, useState } from "react";
 import { useLocation } from "wouter";
-import { startLogin } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Streamdown } from "streamdown";
 import { ArrowLeft, ArrowUp, ChevronDown, Code2, Copy, ExternalLink, Gamepad2, Globe2, Layers3, LogOut, Menu, MonitorPlay, Plus, Save, Sparkles, X } from "lucide-react";
-import { useAuth } from "@/_core/hooks/useAuth";
+import { useSupabaseAuth } from "@/hooks/useSupabaseAuth";
 
 type Kind = "game" | "app" | "website";
 type Panel = "preview" | "code" | "world";
@@ -23,7 +22,7 @@ function dateLabel(value: Date | string | null | undefined) { return value ? new
 
 export default function Workspace() {
   const [, setLocation] = useLocation();
-  const { user, isAuthenticated, loading: authLoading, logout } = useAuth();
+  const { user, isAuthenticated, loading: authLoading, logout } = useSupabaseAuth();
   const [prompt, setPrompt] = useState("");
   const [kind, setKind] = useState<Kind>("game");
   const [panel, setPanel] = useState<Panel>("preview");
@@ -38,7 +37,7 @@ export default function Workspace() {
   const active = useMemo(() => projects.data?.find(project => project.id === activeId), [activeId, projects.data]);
 
   const build = async () => {
-    if (!isAuthenticated) { toast("Sign in to build and save projects", { action: { label: "Sign in", onClick: startLogin } }); return; }
+    if (!isAuthenticated) { setLocation("/login"); return; }
     if (prompt.trim().length < 8) { toast.error("Add a little more detail to your brief"); return; }
     const brief = prompt.trim(); setPrompt(""); setMessages(current => [...current, { role: "user", text: brief }]);
     try {
@@ -55,7 +54,7 @@ export default function Workspace() {
     <div className="flex min-h-[calc(100vh-24px)] flex-col overflow-hidden rounded-[24px] border border-black/[0.07] bg-[#f7f5f1] shadow-[0_16px_70px_rgba(82,63,47,.12)] sm:min-h-[calc(100vh-32px)] sm:rounded-[30px]">
       <header className="flex h-[68px] shrink-0 items-center justify-between border-b border-black/[0.08] bg-white/80 px-4 backdrop-blur-xl sm:px-6">
         <div className="flex items-center gap-3"><button className="rounded-full p-2 text-neutral-500 hover:bg-neutral-100 lg:hidden" onClick={() => setMobileSidebar(true)}><Menu size={18} /></button><button onClick={() => setLocation("/")} className="flex items-center gap-2.5"><span className="grid size-8 place-items-center rounded-full bg-[#ef4d23] text-sm font-bold text-white">S</span><span className="text-[17px] font-semibold tracking-[-.04em]">Stack</span></button><span className="hidden h-5 w-px bg-neutral-200 sm:block" /><span className="hidden text-xs text-neutral-400 sm:block">Workspace</span></div>
-        <div className="flex items-center gap-2"><button onClick={() => setLocation("/")} className="hidden items-center gap-1.5 rounded-full px-3 py-2 text-xs font-medium text-neutral-500 hover:bg-neutral-100 sm:flex"><ArrowLeft size={14} /> Landing</button><button onClick={() => toast("Publishing is coming next")} className="hidden items-center gap-2 rounded-full border border-neutral-200 bg-white px-3.5 py-2 text-xs font-semibold text-neutral-700 shadow-sm hover:bg-neutral-50 sm:flex"><ExternalLink size={14} /> Publish</button>{isAuthenticated ? <button onClick={() => logout()} className="flex items-center gap-2 rounded-full border border-neutral-200 bg-white py-1.5 pl-1.5 pr-3 text-xs shadow-sm"><span className="grid size-6 place-items-center rounded-full bg-[#eee9e1] font-bold text-neutral-600">{(user?.name || user?.email || "S").slice(0, 1).toUpperCase()}</span><span className="hidden max-w-24 truncate text-neutral-600 sm:inline">{user?.name || user?.email}</span><LogOut size={13} className="text-neutral-400" /></button> : <button onClick={startLogin} className="rounded-full bg-[#0b0f1a] px-4 py-2 text-xs font-semibold text-white">Sign in</button>}</div>
+        <div className="flex items-center gap-2"><button onClick={() => setLocation("/")} className="hidden items-center gap-1.5 rounded-full px-3 py-2 text-xs font-medium text-neutral-500 hover:bg-neutral-100 sm:flex"><ArrowLeft size={14} /> Landing</button><button onClick={() => setLocation("/publish")} className="hidden items-center gap-2 rounded-full border border-neutral-200 bg-white px-3.5 py-2 text-xs font-semibold text-neutral-700 shadow-sm hover:bg-neutral-50 sm:flex"><ExternalLink size={14} /> Publish</button>{isAuthenticated ? <button onClick={() => logout()} className="flex items-center gap-2 rounded-full border border-neutral-200 bg-white py-1.5 pl-1.5 pr-3 text-xs shadow-sm"><span className="grid size-6 place-items-center rounded-full bg-[#eee9e1] font-bold text-neutral-600">{(user?.user_metadata?.full_name || user?.email || "S").slice(0, 1).toUpperCase()}</span><span className="hidden max-w-24 truncate text-neutral-600 sm:inline">{user?.user_metadata?.full_name || user?.email}</span><LogOut size={13} className="text-neutral-400" /></button> : <button onClick={() => setLocation("/login")} className="rounded-full bg-[#0b0f1a] px-4 py-2 text-xs font-semibold text-white">Sign in</button>}</div>
       </header>
       <div className="flex min-h-0 flex-1">
         <aside className={`${mobileSidebar ? "fixed inset-y-3 left-3 z-50 flex w-[280px] rounded-[20px] shadow-2xl" : "hidden"} flex-col border-r border-black/[0.08] bg-white lg:relative lg:inset-auto lg:flex lg:w-[245px] lg:rounded-none lg:shadow-none`}>
