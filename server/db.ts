@@ -4,6 +4,8 @@ import {
   InsertProject,
   InsertUser,
   apiKeys,
+  deployments,
+  Deployment,
   Project,
   projects,
   users,
@@ -132,4 +134,28 @@ export async function deleteApiKey(userId: number, id: number) {
   if (!db) return false;
   await db.delete(apiKeys).where(and(eq(apiKeys.userId, userId), eq(apiKeys.id, id)));
   return true;
+}
+
+export async function getApiKeySecret(userId: number, provider: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select({ encryptedValue: apiKeys.encryptedValue }).from(apiKeys).where(and(eq(apiKeys.userId, userId), eq(apiKeys.provider, provider))).orderBy(desc(apiKeys.updatedAt)).limit(1);
+  return result[0]?.encryptedValue;
+}
+
+export async function listDeployments(userId: number, projectId?: number): Promise<Deployment[]> {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = projectId ? and(eq(deployments.userId, userId), eq(deployments.projectId, projectId)) : eq(deployments.userId, userId);
+  return db.select().from(deployments).where(conditions).orderBy(desc(deployments.updatedAt));
+}
+
+export async function createDeployment(input: Omit<Deployment, "id" | "createdAt" | "updatedAt">) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.insert(deployments).values(input).$returningId();
+  const id = result[0]?.id;
+  if (!id) return undefined;
+  const rows = await db.select().from(deployments).where(and(eq(deployments.userId, input.userId), eq(deployments.id, id))).limit(1);
+  return rows[0];
 }

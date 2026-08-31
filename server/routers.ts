@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
@@ -8,12 +9,16 @@ import {
   createProject,
   deleteApiKey,
   getProject,
+  getApiKeySecret,
+  createDeployment,
+  listDeployments,
   listApiKeys,
   listProjects,
   updateProject,
 } from "./db";
 import { encryptSecret, secretHint } from "./secretBox";
 import { generateCode, type BuildKind } from "./stack";
+import { deployProjectToVercel, syncProjectToGitHub } from "./publishing";
 
 const buildKind = z.enum(["game", "app", "website"]);
 const promptInput = z.object({
@@ -82,6 +87,36 @@ export const appRouter = router({
     listKeys: protectedProcedure.query(({ ctx }) => listApiKeys(ctx.user.id)),
     saveKey: protectedProcedure.input(z.object({ provider: z.string().trim().min(2).max(80), label: z.string().trim().min(2).max(120), value: z.string().trim().min(8).max(4096) })).mutation(({ ctx, input }) => createApiKey({ userId: ctx.user.id, provider: input.provider, label: input.label, keyHint: secretHint(input.value), encryptedValue: encryptSecret(input.value) })),
     removeKey: protectedProcedure.input(z.object({ id: z.number().int().positive() })).mutation(({ ctx, input }) => deleteApiKey(ctx.user.id, input.id)),
+  }),
+
+  publishing: router({
+    history: protectedProcedure.input(z.object({ projectId: z.number().int().positive().optional() }).optional()).query(({ ctx, input }) => listDeployments(ctx.user.id, input?.projectId)),
+    github: protectedProcedure.input(z.object({ projectId: z.number().int().positive(), repositoryName: z.string().trim().min(1).max(90), privateRepo: z.boolean() })).mutation(async ({ ctx, input }) => {
+      const project = await getProject(ctx.user.id, input.projectId);
+      if (!project) throw new TRPCError({ code: "NOT_FOUND", message: "Project not found" });
+      const encryptedToken = await getApiKeySecret(ctx.user.id, "GitHub");
+      if (!encryptedToken) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Connect a GitHub token in Settings first" });
+      try {
+        const repository = await syncProjectToGitHub({ encryptedToken, requestedName: input.repositoryName, description: project.prompt.slice(0, 160), code: project.code, privateRepo: input.privateRepo });
+        await createDeployment({ userId: ctx.user.id, projectId: project.id, provider: "github", status: "ready", repository: `${repository.owner}/${repository.name}`, repositoryUrl: repository.htmlUrl, deploymentUrl: null, providerId: null, errorMessage: null });
+        return repository;
+      } catch (error) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? `GitHub sync failed: ${error.message}` : "GitHub sync failed" });
+      }
+    }),
+    vercel: protectedProcedure.input(z.object({ projectId: z.number().int().positive(), projectName: z.string().trim().min(1).max(90) })).mutation(async ({ ctx, input }) => {
+      const project = await getProject(ctx.user.id, input.projectId);
+      if (!project) throw new TRPCError({ code: "NOT_FOUND", message: "Project not found" });
+      const encryptedToken = await getApiKeySecret(ctx.user.id, "Vercel");
+      if (!encryptedToken) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Connect a Vercel token in Settings first" });
+      try {
+        const deployment = await deployProjectToVercel({ encryptedToken, projectName: input.projectName, code: project.code, production: true });
+        await createDeployment({ userId: ctx.user.id, projectId: project.id, provider: "vercel", status: "ready", repository: null, repositoryUrl: null, deploymentUrl: deployment.url, providerId: deployment.id, errorMessage: null });
+        return deployment;
+      } catch (error) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? `Vercel deploy failed: ${error.message}` : "Vercel deploy failed" });
+      }
+    }),
   }),
 });
 

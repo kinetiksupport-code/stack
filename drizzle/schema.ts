@@ -42,12 +42,29 @@ export const apiKeys = mysqlTable("apiKeys", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
+export const deployments = mysqlTable("deployments", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  projectId: int("projectId").notNull(),
+  provider: varchar("provider", { length: 40 }).notNull(),
+  status: mysqlEnum("status", ["ready", "error"]).default("ready").notNull(),
+  repository: varchar("repository", { length: 220 }),
+  repositoryUrl: text("repositoryUrl"),
+  deploymentUrl: text("deploymentUrl"),
+  providerId: varchar("providerId", { length: 180 }),
+  errorMessage: text("errorMessage"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 export type Project = typeof projects.$inferSelect;
 export type InsertProject = typeof projects.$inferInsert;
 export type ApiKey = typeof apiKeys.$inferSelect;
 export type InsertApiKey = typeof apiKeys.$inferInsert;
+export type Deployment = typeof deployments.$inferSelect;
+export type InsertDeployment = typeof deployments.$inferInsert;
 
 export const WORLD_MODEL_VERSION = "world-model-v0.1";
 export const DEFAULT_GENERATION_MODEL = "z-ai/glm-5.2:free";
