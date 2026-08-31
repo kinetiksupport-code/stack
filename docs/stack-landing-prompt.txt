@@ -1,0 +1,44 @@
+Build a fully responsive, full-viewport hero section for an AI creation platform called "Stack" with these exact specs:
+
+Brand and product direction
+Stack is the product name. It is an AI creation workspace for making games, interactive worlds, applications, and websites. Do not display the name of any external model vendor or inference provider in the interface. The implementation may keep the model selection internal and configurable on the server.
+
+Page Frame
+Outer wrapper: min-h-screen w-full bg-[#ededed] p-3 sm:p-4, font-family Inter
+Hero container (clips everything inside): relative w-full h-[calc(100vh-24px)] sm:h-[calc(100vh-32px)] overflow-hidden bg-[#d9d9d9] rounded-2xl sm:rounded-3xl
+Background Video
+URL: https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260424_064411_9e9d7f84-9277-41f4-ab10-59172d89e6be.mp4
+Absolutely positioned, inset-0 w-full h-full object-cover pointer-events-none
+Attributes: autoPlay, loop, muted, playsInline, preload="auto", disableRemotePlayback, webkit-playsinline="true", x5-playsinline="true"
+Poster fallback: https://images.unsplash.com/photo-1557683316-973673baf926?w=1600&q=60
+Above the video: absolute inset-0 bg-white/10 overlay
+Foreground content wrapper: relative z-10
+Fonts (/src/styles/fonts.css)
+Import from Google Fonts:
+Inter weights 400, 500, 600, 700
+Instrument Serif regular + italic
+
+Navbar (floating pill, responsive with hamburger)
+Wrapper: flex justify-center pt-4 sm:pt-6 px-3 sm:px-4
+Pill: bg-white rounded-full shadow-sm border border-neutral-200 pl-2 pr-2 py-2 w-full max-w-[760px] relative
+Logo (left, shrink-0): orange #ef4d23 8-petal flower SVG — 8 circles at radius 10 around center (16,16) plus center circle, all r=3.5, viewBox 32×32, rendered w-7 h-7 sm:w-8 sm:h-8
+Desktop links (hidden md:flex, gap-6, 14px): "Workspace" (with 1.5px black dot), "Capabilities", "About", "Docs" (#ef4d23 + ChevronDown 3.5)
+Right cluster (ml-auto): ShoppingCart icon (hidden on mobile), then orange #ef4d23 rounded-full button "Start building" (desktop) / "Build" (mobile) with white/20 inner circle holding ChevronRight
+Mobile-only Menu (lucide) hamburger button (md:hidden)
+When open: dropdown panel absolute top-full left-2 right-2 mt-2 bg-white rounded-2xl shadow-lg border border-neutral-200 p-3 z-20 listing the same nav items vertically
+useState open toggles the menu
+
+Hero Content (centered)
+flex flex-col items-center px-4 pt-10 sm:pt-16 pb-8 sm:pb-12 text-center
+Badge: inline-flex items-center gap-2 bg-white rounded-full px-4 py-1.5 shadow-sm, 13px — orange dot + "Stack"
+Headline: "Build " + italic Instrument Serif "Worlds" + line break + "and apps of tomorrow"
+Subtitle: "The AI workspace for building games, applications, and websites"
+CTA: "Start building"
+
+Dashboard Preview
+Use the supplied card, gauge and responsive-grid specifications from the original prompt, but rename all product-facing copy to Stack language: Worlds, Build brief, Builds, Games, Applications and Websites.
+
+Behavior
+No custom animations; only the native looping muted background video.
+Entire hero (video + content + dashboard) is clipped together by the rounded container, so the dashboard cards bleed off the bottom edge.
+Fully responsive: navbar collapses to hamburger under md, headline/CTA scale via clamp(), dashboard grid steps from 1 → 2 → 3 columns.

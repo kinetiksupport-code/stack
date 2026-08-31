@@ -1,28 +1,78 @@
+import { z } from "zod";
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
-import { publicProcedure, router } from "./_core/trpc";
+import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
+import {
+  createProject,
+  getProject,
+  listProjects,
+  updateProject,
+} from "./db";
+import { generateCode, type BuildKind } from "./stack";
+
+const buildKind = z.enum(["game", "app", "website"]);
+const promptInput = z.object({
+  kind: buildKind,
+  prompt: z.string().trim().min(8).max(8_000),
+});
 
 export const appRouter = router({
-    // if you need to use socket.io, read and register route in server/_core/index.ts, all api should start with '/api/' so that the gateway can route correctly
   system: systemRouter,
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
-      return {
-        success: true,
-      } as const;
+      return { success: true } as const;
     }),
   }),
 
-  // TODO: add feature routers here, e.g.
-  // todo: router({
-  //   list: protectedProcedure.query(({ ctx }) =>
-  //     db.getUserTodos(ctx.user.id)
-  //   ),
-  // }),
+  stack: router({
+    list: protectedProcedure.query(({ ctx }) => listProjects(ctx.user.id)),
+
+    get: protectedProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .query(({ ctx, input }) => getProject(ctx.user.id, input.id)),
+
+    generate: protectedProcedure.input(promptInput).mutation(async ({ ctx, input }) => {
+      const result = await generateCode(input.kind as BuildKind, input.prompt);
+      return {
+        code: result.code,
+        usedModel: result.usedModel,
+        model: "z-ai/glm-5.2:free",
+      };
+    }),
+
+    create: protectedProcedure
+      .input(promptInput.extend({ name: z.string().trim().min(1).max(160), code: z.string().min(1) }))
+      .mutation(({ ctx, input }) =>
+        createProject({
+          userId: ctx.user.id,
+          name: input.name,
+          kind: input.kind,
+          prompt: input.prompt,
+          code: input.code,
+          status: "ready",
+        }),
+      ),
+
+    update: protectedProcedure
+      .input(
+        z.object({
+          id: z.number().int().positive(),
+          name: z.string().trim().min(1).max(160).optional(),
+          kind: buildKind.optional(),
+          prompt: z.string().trim().min(8).max(8_000).optional(),
+          code: z.string().min(1).optional(),
+          status: z.enum(["draft", "ready"]).optional(),
+        }),
+      )
+      .mutation(({ ctx, input }) => {
+        const { id, ...changes } = input;
+        return updateProject(ctx.user.id, id, changes);
+      }),
+  }),
 });
 
 export type AppRouter = typeof appRouter;
