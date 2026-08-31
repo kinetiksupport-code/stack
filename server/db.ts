@@ -3,6 +3,7 @@ import { drizzle } from "drizzle-orm/mysql2";
 import {
   InsertProject,
   InsertUser,
+  apiKeys,
   Project,
   projects,
   users,
@@ -110,4 +111,25 @@ export async function updateProject(
     .set({ ...input, updatedAt: new Date() })
     .where(and(eq(projects.userId, userId), eq(projects.id, id)));
   return getProject(userId, id);
+}
+
+export async function listApiKeys(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({ id: apiKeys.id, provider: apiKeys.provider, label: apiKeys.label, keyHint: apiKeys.keyHint, createdAt: apiKeys.createdAt, updatedAt: apiKeys.updatedAt }).from(apiKeys).where(eq(apiKeys.userId, userId)).orderBy(desc(apiKeys.updatedAt));
+}
+
+export async function createApiKey(input: { userId: number; provider: string; label: string; keyHint: string; encryptedValue: string }) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.insert(apiKeys).values(input).$returningId();
+  const id = result[0]?.id;
+  return id ? (await db.select({ id: apiKeys.id, provider: apiKeys.provider, label: apiKeys.label, keyHint: apiKeys.keyHint, createdAt: apiKeys.createdAt, updatedAt: apiKeys.updatedAt }).from(apiKeys).where(and(eq(apiKeys.userId, input.userId), eq(apiKeys.id, id))).limit(1))[0] : undefined;
+}
+
+export async function deleteApiKey(userId: number, id: number) {
+  const db = await getDb();
+  if (!db) return false;
+  await db.delete(apiKeys).where(and(eq(apiKeys.userId, userId), eq(apiKeys.id, id)));
+  return true;
 }

@@ -4,11 +4,15 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import {
+  createApiKey,
   createProject,
+  deleteApiKey,
   getProject,
+  listApiKeys,
   listProjects,
   updateProject,
 } from "./db";
+import { encryptSecret, secretHint } from "./secretBox";
 import { generateCode, type BuildKind } from "./stack";
 
 const buildKind = z.enum(["game", "app", "website"]);
@@ -72,6 +76,12 @@ export const appRouter = router({
         const { id, ...changes } = input;
         return updateProject(ctx.user.id, id, changes);
       }),
+  }),
+
+  integrations: router({
+    listKeys: protectedProcedure.query(({ ctx }) => listApiKeys(ctx.user.id)),
+    saveKey: protectedProcedure.input(z.object({ provider: z.string().trim().min(2).max(80), label: z.string().trim().min(2).max(120), value: z.string().trim().min(8).max(4096) })).mutation(({ ctx, input }) => createApiKey({ userId: ctx.user.id, provider: input.provider, label: input.label, keyHint: secretHint(input.value), encryptedValue: encryptSecret(input.value) })),
+    removeKey: protectedProcedure.input(z.object({ id: z.number().int().positive() })).mutation(({ ctx, input }) => deleteApiKey(ctx.user.id, input.id)),
   }),
 });
 
